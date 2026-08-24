@@ -29,6 +29,10 @@ body{
   font-family:var(--mono);font-size:12px;line-height:1.35;
   font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;
   overflow:hidden;-webkit-font-smoothing:antialiased;
+  /* Dragging is how you pan the plane and how you move a node — it never means
+     "select". Leaving selection on only ever paints the instrument blue by
+     accident. */
+  -webkit-user-select:none;user-select:none;
 }
 a{color:var(--sm);text-decoration:none}
 a:hover{color:var(--fg)}
