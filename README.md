@@ -8,6 +8,10 @@
   A live, browser-based view of what every process is doing on the machine's GPUs.
 </p>
 
+https://github.com/user-attachments/assets/299ec047-b258-4def-9ea7-90c9c97411d5
+
+*Kernels and copies from an ordinary CUDA program, flowing along its own stream lanes as they run. That program was not modified, recompiled, or linked against anything — it was started with `gpuflow run`.*
+
 Two kinds of tool already exist, and neither covers the middle:
 
 |                         | Live | Multi-process | Kernels & streams | Zero source changes |
