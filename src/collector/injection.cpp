@@ -180,6 +180,32 @@ void handle_kernel(Collector& c, const CUpti_ActivityKernel4* k) {
     push(c, e);
 }
 
+// CUPTI reports the context's null stream without being asked. It is the one
+// thing that can be said about a stream in a program that never named anything.
+void handle_context(Collector& c, const CUpti_ActivityContext* ctx) {
+    Event e{};
+    e.kind = static_cast<std::uint8_t>(EventKind::kStreamInfo);
+    e.flags = kFlagDefaultStream;
+    e.device_id = static_cast<std::uint16_t>(ctx->deviceId);
+    e.stream_id = ctx->nullStreamId;
+    e.context_id = ctx->contextId;
+    push(c, e);
+}
+
+// NVTX naming, which only arrives if the observed program called
+// nvtxNameCudaStreamA. Most do not, and a lane that stays a number is the
+// honest outcome — GPUFlow has no other way to know what a stream is for.
+void handle_name(Collector& c, const CUpti_ActivityName* n) {
+    if (n->objectKind != CUPTI_ACTIVITY_OBJECT_STREAM) return;
+    Event e{};
+    e.kind = static_cast<std::uint8_t>(EventKind::kStreamInfo);
+    e.device_id = static_cast<std::uint16_t>(n->objectId.dcs.deviceId);
+    e.stream_id = n->objectId.dcs.streamId;
+    e.context_id = n->objectId.dcs.contextId;
+    e.name_id = c.interner.intern(n->name);
+    push(c, e);
+}
+
 void handle_memcpy(Collector& c, const CUpti_ActivityMemcpy3* m) {
     Event e{};
     e.kind = static_cast<std::uint8_t>(EventKind::kMemcpy);
@@ -214,6 +240,12 @@ void CUPTIAPI buffer_completed(CUcontext, std::uint32_t, std::uint8_t* buffer, s
                 break;
             case CUPTI_ACTIVITY_KIND_MEMCPY:
                 handle_memcpy(c, reinterpret_cast<const CUpti_ActivityMemcpy3*>(record));
+                break;
+            case CUPTI_ACTIVITY_KIND_CONTEXT:
+                handle_context(c, reinterpret_cast<const CUpti_ActivityContext*>(record));
+                break;
+            case CUPTI_ACTIVITY_KIND_NAME:
+                handle_name(c, reinterpret_cast<const CUpti_ActivityName*>(record));
                 break;
             default:
                 break;
@@ -298,6 +330,11 @@ bool start() {
     cupti_ok(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL),
              "enable CONCURRENT_KERNEL");
     cupti_ok(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY), "enable MEMCPY");
+    // Two records per context and per named stream for the whole run, so these
+    // cost the observed program essentially nothing and turn `s13` into
+    // something a person can read.
+    cupti_ok(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONTEXT), "enable CONTEXT");
+    cupti_ok(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_NAME), "enable NAME");
 
     // Without this, CUPTI only hands buffers back when they fill or at the
     // final flush — which would make a *live* profiler show nothing until the

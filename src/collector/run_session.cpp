@@ -71,6 +71,13 @@ RunSession::RunSession(const std::vector<std::string>& command, std::string coll
         ::setenv("CUDA_INJECTION64_PATH", collector_path.c_str(), 1);
         ::setenv(kRingEnvVar, ring_name.c_str(), 1);
         ::setenv(kNameTableEnvVar, names_name.c_str(), 1);
+#ifdef GPUFLOW_CUPTI_LIBRARY
+        // Without this, a program that names its streams through NVTX gets
+        // those names dropped on the floor and the lanes stay numbered. Costs
+        // nothing to a program that never calls NVTX. Not overwritten: a user
+        // who set it deliberately knows something we do not.
+        ::setenv("NVTX_INJECTION64_PATH", GPUFLOW_CUPTI_LIBRARY, 0);
+#endif
 
         std::vector<char*> argv;
         argv.reserve(command.size() + 1);

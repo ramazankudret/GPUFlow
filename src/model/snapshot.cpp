@@ -191,8 +191,18 @@ std::string Snapshot::to_json() const {
         append_field(out, "streams");
         out += '[';
         for (std::size_t j = 0; j < t.streams.size(); ++j) {
+            const StreamInfo& st = t.streams[j];
             if (j > 0) out += ',';
-            append_number(out, t.streams[j]);
+            out += '{';
+            append_field(out, "id");
+            append_number(out, st.id);
+            out += ',';
+            append_field(out, "name");
+            append_number(out, st.name_index);
+            out += ',';
+            append_field(out, "default");
+            out += st.is_default ? "true" : "false";
+            out += '}';
         }
         out += ']';
 

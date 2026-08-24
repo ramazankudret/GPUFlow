@@ -15,10 +15,12 @@
 // compile, and requiring nvcc for a demo would put a CUDA toolkit between a
 // stranger and their first build.
 //
-//   nvcc -o demo_workload examples/demo_workload.cu
+//   nvcc -o demo_workload examples/demo_workload.cu -lnvToolsExt
 //   ./build/gpuflow run -- ./demo_workload 600
 //
 // Then open http://127.0.0.1:7717 and zoom into the TRACED process.
+
+#include <nvToolsExtCudaRt.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -73,6 +75,14 @@ int main(int argc, char** argv) {
     cudaStreamCreate(&compute);
     cudaStreamCreate(&side);
     cudaStreamCreate(&copy);
+
+    // CUDA has no stream names of its own, so a profiler can only show numbers
+    // unless the program says otherwise. These three calls are the whole reason
+    // GPUFlow can label the lanes; without them it would honestly draw s13, s14
+    // and s15, because it would honestly not know.
+    nvtxNameCudaStreamA(compute, "compute");
+    nvtxNameCudaStreamA(side, "attention");
+    nvtxNameCudaStreamA(copy, "transfer");
 
     cudaMalloc(&activations, sizeof(host));
     cudaMalloc(&attention, sizeof(host));

@@ -19,7 +19,7 @@ GPUFlow aims at all four columns at once. You see every process on the card, and
 
 **v0.1 — the passive layer.** NVML polling, an HTTP + SSE server with no dependencies beyond POSIX sockets, and a single-file node-graph browser UI.
 
-**v0.2 — the kernel layer.** `gpuflow run <command>` launches a CUDA program with a CUPTI-based collector injected into it, with no changes to that program's source. Its kernels and copies flow along per-stream lanes in the browser as they run, next to per-kernel launch counts and transfer totals. Streams are still labelled by id rather than by name; that is what is left.
+**v0.2 — the kernel layer.** `gpuflow run <command>` launches a CUDA program with a CUPTI-based collector injected into it, with no changes to that program's source. Its kernels and copies flow along per-stream lanes in the browser as they run, next to per-kernel launch counts and transfer totals.
 
 ## Build and run
 
@@ -62,6 +62,8 @@ usage: gpuflow watch [options]
 The UI is a pan/zoom plane: devices, the processes attached to them, and the host as connected nodes. Drag to pan, wheel to zoom, click a node to isolate it and its edges, `F` to fit, `Esc` to clear.
 
 A process launched with `run` is marked `TRACED` and carries a lane strip — one row per CUDA stream, kernels in the SM colour, copies in the transfer colour. The strip states its own time window and how far behind live it is, and says how many of the executions it is actually showing.
+
+Lanes are labelled by name if your program named its streams with `nvtxNameCudaStreamA`, as `default` for the null stream, and by id otherwise. GPUFlow will not guess a stream's purpose from the work that happened to land on it.
 
 Appending `?demo` (or `?demo=shared`, `?demo=multigpu`, …) replays canned frames instead of the live stream — it exists so an eight-GPU box can be captured for a screenshot from a one-GPU laptop. Demo mode says so on screen and is never the default.
 

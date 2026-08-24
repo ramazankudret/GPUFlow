@@ -100,6 +100,12 @@ if(CUPTI_INCLUDE_DIR AND CUPTI_LIBRARY)
         target_link_libraries(gpuflow_inject PRIVATE rt)
     endif()
 
+    # NVTX only routes stream names into CUPTI when the process is told which
+    # CUPTI to route them to, and it has to be the same one the collector links
+    # against — pointing at a mismatched build silently delivers nothing. The
+    # agent does not link CUPTI itself, so the path is baked in here.
+    target_compile_definitions(gpuflow PRIVATE GPUFLOW_CUPTI_LIBRARY="${CUPTI_LIBRARY}")
+
     add_executable(collector_probe tools/collector_probe.cpp src/ipc/shared_ring.cpp)
     target_include_directories(collector_probe PRIVATE src)
     target_compile_options(collector_probe PRIVATE -Wall -Wextra -Wpedantic)

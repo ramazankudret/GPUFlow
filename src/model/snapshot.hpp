@@ -77,6 +77,17 @@ struct KernelSpan {
     std::uint8_t kind = 0;
 };
 
+// CUDA gives streams numbers, not names. `name_index` is non-zero only when the
+// observed program named the stream through NVTX; `is_default` is CUPTI's own
+// report of which id the context uses for the null stream. Everything else is
+// an id, and is drawn as one — inferring a stream's purpose from what happened
+// to run on it would be a guess wearing a label.
+struct StreamInfo {
+    std::uint32_t id = 0;
+    std::uint32_t name_index = 0;
+    bool is_default = false;
+};
+
 struct CopyStat {
     std::uint64_t count = 0;
     std::uint64_t bytes = 0;
@@ -92,7 +103,7 @@ struct TracedProcess {
     bool running = false;
 
     std::vector<std::string> names;  // indexed by KernelStat/KernelSpan
-    std::vector<std::uint32_t> streams;
+    std::vector<StreamInfo> streams;
     std::vector<KernelStat> kernels;
     std::vector<KernelSpan> spans;
 

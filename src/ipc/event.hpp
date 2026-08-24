@@ -26,6 +26,14 @@ enum class EventKind : std::uint8_t {
     kStreamCreated = 3,
     kStreamDestroyed = 4,
 
+    // What a stream is, rather than what ran on it. CUDA has no stream names of
+    // its own, so this carries two different kinds of knowledge: which id is the
+    // context's null stream (a fact CUPTI reports unprompted), and whatever name
+    // the program gave the stream through NVTX (a fact only a cooperating
+    // program supplies). stream_id names the stream; name_id is 0 unless a name
+    // was published; flags says which of the two this record is asserting.
+    kStreamInfo = 6,
+
     // Carries CUPTI's clock in start_ns and the collector's CLOCK_REALTIME in
     // end_ns, read back to back. On Linux the two agree to well under a
     // microsecond — CUPTI's timestamp *is* CLOCK_REALTIME — but the agent
@@ -42,6 +50,9 @@ enum EventFlags : std::uint8_t {
     kFlagDeviceToHost = 1u << 1,
     kFlagDeviceToDevice = 1u << 2,
     kFlagAsync = 1u << 3,
+
+    // kStreamInfo: this id is the context's null stream.
+    kFlagDefaultStream = 1u << 4,
 };
 
 struct Event {

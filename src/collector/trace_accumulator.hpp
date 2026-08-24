@@ -84,6 +84,15 @@ private:
     std::unordered_map<std::uint32_t, std::deque<Span>> spans_;
     std::unordered_map<std::uint32_t, std::uint64_t> elided_;
 
+    // What is known about a stream, as opposed to what ran on it. A stream can
+    // be both the null stream and named, so the two facts accumulate rather
+    // than overwrite.
+    struct StreamFacts {
+        std::uint32_t name_index = 0;
+        bool is_default = false;
+    };
+    std::unordered_map<std::uint32_t, StreamFacts> stream_facts_;
+
     CopyStat h2d_, d2h_, d2d_;
     std::uint64_t events_total_ = 0;
     std::uint64_t events_dropped_ = 0;

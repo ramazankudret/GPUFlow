@@ -86,6 +86,13 @@ void TraceAccumulator::ingest(const Event* events, std::size_t count) {
             continue;
         }
 
+        if (kind == EventKind::kStreamInfo) {
+            StreamFacts& facts = stream_facts_[e.stream_id];
+            if (e.flags & kFlagDefaultStream) facts.is_default = true;
+            if (e.name_id != 0) facts.name_index = name_index_for(e.name_id);
+            continue;
+        }
+
         const std::uint64_t duration =
             e.end_ns > e.start_ns ? e.end_ns - e.start_ns : 0;
 
@@ -195,7 +202,17 @@ TracedProcess TraceAccumulator::build(std::int64_t now_unix_ms) {
         }
         streams.resize(kMaxStreams);
     }
-    out.streams = streams;
+    out.streams.reserve(streams.size());
+    for (const std::uint32_t stream : streams) {
+        StreamInfo info;
+        info.id = stream;
+        auto facts = stream_facts_.find(stream);
+        if (facts != stream_facts_.end()) {
+            info.name_index = facts->second.name_index;
+            info.is_default = facts->second.is_default;
+        }
+        out.streams.push_back(info);
+    }
 
     for (const std::uint32_t stream : streams) {
         std::deque<Span>& lane = spans_[stream];
