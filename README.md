@@ -41,6 +41,13 @@ To see inside a program rather than just around it:
 
 That needs CUPTI, which ships with the CUDA toolkit rather than the driver. Without it the build still succeeds and `watch` still works; only `run` is unavailable.
 
+If you do not have a CUDA program to point it at, `examples/demo_workload.cu` is one — a transformer-shaped launch pattern across three streams, written to make the lanes legible rather than to compute anything:
+
+```bash
+nvcc -o demo_workload examples/demo_workload.cu
+./build/gpuflow run -- ./demo_workload 600
+```
+
 ```
 usage: gpuflow watch [options]
        gpuflow run [options] -- <command> [args...]
