@@ -4,7 +4,32 @@ A profiler that cannot state its own cost is asking to be trusted on faith. Thes
 
 ```bash
 ./build/ring_stress --mode cost --records 20000000
+./build/collector_probe -- ./your-cuda-program
 ```
+
+## v0.2 — what the observed program actually pays
+
+The figure that matters: a launch-bound CUDA program, run normally and then run again with the collector injected. Launch-bound on purpose — CUPTI instruments launches, so a compute-bound loop would hide the very cost being measured.
+
+200 000 empty-kernel launches, five runs each way, same machine as below:
+
+| | Per launch | Launches/s |
+|---|---:|---:|
+| Baseline | 7 579 ns | ~132 000 |
+| With GPUFlow injected | 7 776 ns | ~129 000 |
+| **Cost** | **~197 ns** | **2.6 %** |
+
+Of that ~197 ns, roughly 30 ns is GPUFlow's own ring (measured separately below). The rest is CUPTI's activity instrumentation, which is the price of admission for kernel-level visibility without touching the program's source.
+
+**Two things make that percentage flattering, and both should be said.** The baseline launch itself costs 7.6 µs here because this is WSL2, where every launch crosses a passthrough boundary; on native Linux a launch is nearer 2–5 µs, so the same ~197 ns would read as 4–8 %. And the kernels are empty — a program doing real work per launch amortises the overhead much further. Take 2.6 % as the number for *this* machine, not as a general claim.
+
+Setting a smaller `GPUFLOW_FLUSH_MS` raises the cost and lowers latency; 100 ms is the default.
+
+### What a crash costs
+
+CUPTI buffers records and hands them back on a timer. If the observed program dies, everything since the last flush is gone. Measured: a program that launched 324 000 kernels over three seconds and then took SIGSEGV yielded 317 520 of them — **98 %**, with the loss confined to the final ~60 ms. That is the intended trade, and it is bounded by the flush period rather than by luck.
+
+## v0.2 — event ring
 
 ## v0.2 — event ring
 
@@ -34,7 +59,7 @@ What that means for a program being watched:
 
 **The drop path is cheaper than the success path**, about 6.7 ns, because it never touches the record array. A saturated ring therefore degrades toward *less* overhead, not more — the collector cannot become the reason the observed program stalls.
 
-**Not yet measured:** the CUPTI callback cost itself, which does not exist yet. When it lands it will almost certainly dominate everything in this table, and these totals will need restating rather than adding to.
+**The ring is a small share of the total.** Of the ~197 ns the observed program pays per launch, this table accounts for about 30. That was the expected outcome and it is the right one: the transport should not be where the cost lives.
 
 ## Correctness, and what is not yet proven
 

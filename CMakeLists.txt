@@ -62,3 +62,46 @@ option(GPUFLOW_RING_DEBUG "Trap concurrent producers on the SPSC ring" OFF)
 if(GPUFLOW_RING_DEBUG)
     target_compile_definitions(ring_stress PRIVATE GPUFLOW_RING_DEBUG)
 endif()
+
+# ---------------------------------------------------------------- collector
+#
+# CUPTI ships with the CUDA toolkit, not the driver, so a machine can run
+# gpuflow's passive layer without ever being able to build this. That is the
+# normal case on a deployment host, and it must not fail the build — the agent
+# is useful without the collector, just not as interesting.
+find_path(CUPTI_INCLUDE_DIR cupti.h
+    HINTS ${CUDAToolkit_INCLUDE_DIRS}
+          /usr/local/cuda/extras/CUPTI/include
+          /usr/local/cuda/targets/x86_64-linux/include
+    PATH_SUFFIXES extras/CUPTI/include)
+find_library(CUPTI_LIBRARY cupti
+    HINTS /usr/local/cuda/extras/CUPTI/lib64
+          /usr/local/cuda/targets/x86_64-linux/lib
+    PATH_SUFFIXES extras/CUPTI/lib64)
+
+if(CUPTI_INCLUDE_DIR AND CUPTI_LIBRARY)
+    message(STATUS "gpuflow: CUPTI found — building the injected collector")
+
+    add_library(gpuflow_inject SHARED src/collector/injection.cpp src/ipc/shared_ring.cpp)
+    # The name the driver loads is the one in CUDA_INJECTION64_PATH; keeping it
+    # literal makes the env var readable in a ps listing.
+    set_target_properties(gpuflow_inject PROPERTIES OUTPUT_NAME gpuflow_inject PREFIX "lib")
+    target_include_directories(gpuflow_inject PRIVATE src ${CUPTI_INCLUDE_DIR})
+    target_compile_options(gpuflow_inject PRIVATE -Wall -Wextra -Wpedantic -fPIC)
+    target_link_libraries(gpuflow_inject PRIVATE ${CUPTI_LIBRARY} ${CMAKE_DL_LIBS})
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_libraries(gpuflow_inject PRIVATE rt)
+    endif()
+
+    add_executable(collector_probe tools/collector_probe.cpp src/ipc/shared_ring.cpp)
+    target_include_directories(collector_probe PRIVATE src)
+    target_compile_options(collector_probe PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(collector_probe PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_libraries(collector_probe PRIVATE rt)
+    endif()
+    add_dependencies(collector_probe gpuflow_inject)
+else()
+    message(STATUS "gpuflow: CUPTI not found — skipping the collector. The agent still "
+                   "builds; only `gpuflow run` needs it.")
+endif()

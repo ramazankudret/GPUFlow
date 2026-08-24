@@ -20,10 +20,12 @@
 namespace gpuflow {
 
 // Set by `gpuflow run` alongside CUDA_INJECTION64_PATH so the collector knows
-// which segment to attach to.
+// which segments to attach to.
 constexpr const char* kRingEnvVar = "GPUFLOW_RING";
+constexpr const char* kNameTableEnvVar = "GPUFLOW_NAMES";
 
 std::string ring_name_for_pid(std::uint64_t pid);
+std::string name_table_name_for_pid(std::uint64_t pid);
 
 class SharedRing {
 public:
@@ -43,6 +45,12 @@ public:
     // returning. Throws std::runtime_error if the segment is missing or its
     // header does not describe a ring this build can read.
     static SharedRing open(const std::string& name);
+
+    // The same lifecycle for a segment that is not a ring — today, the name
+    // table. Validation belongs to whatever structure lives inside, so these
+    // only map; the caller must validate before trusting the contents.
+    static SharedRing create_raw(const std::string& name, std::size_t bytes);
+    static SharedRing open_raw(const std::string& name);
 
     bool valid() const noexcept { return base_ != nullptr && geometry_.ok; }
     void* base() const noexcept { return base_; }

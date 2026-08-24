@@ -27,6 +27,43 @@ std::string ring_name_for_pid(std::uint64_t pid) {
     return "/gpuflow." + std::to_string(pid);
 }
 
+std::string name_table_name_for_pid(std::uint64_t pid) {
+    return "/gpuflow." + std::to_string(pid) + ".names";
+}
+
+namespace {
+
+// Shared by the ring and raw paths: map an existing segment at its own size.
+void* map_existing(const std::string& name, std::size_t& bytes, std::size_t minimum) {
+    const int fd = ::shm_open(name.c_str(), O_RDWR, 0);
+    if (fd < 0) fail("shm_open", name, errno);
+
+    struct stat info {};
+    if (::fstat(fd, &info) != 0) {
+        const int err = errno;
+        ::close(fd);
+        fail("fstat", name, err);
+    }
+
+    bytes = static_cast<std::size_t>(info.st_size);
+    if (bytes < minimum) {
+        ::close(fd);
+        throw std::runtime_error("segment '" + name + "' is smaller than its own header");
+    }
+
+    // Note: the segment can still be ftruncate'd smaller by anyone running as
+    // this user, after which touching a page past the new end raises SIGBUS
+    // rather than a recoverable fault. Out of scope — the same-uid attacker who
+    // can do that can also ptrace the agent — but it is a real property of
+    // mapping a file another process controls, not an oversight.
+    void* base = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    ::close(fd);
+    if (base == MAP_FAILED) fail("mmap", name, errno);
+    return base;
+}
+
+}  // namespace
+
 SharedRing::~SharedRing() {
     if (base_ != nullptr) {
         ::munmap(base_, bytes_);
@@ -122,30 +159,8 @@ SharedRing SharedRing::create(const std::string& name, std::uint32_t capacity) {
 }
 
 SharedRing SharedRing::open(const std::string& name) {
-    const int fd = ::shm_open(name.c_str(), O_RDWR, 0);
-    if (fd < 0) fail("shm_open", name, errno);
-
-    struct stat info {};
-    if (::fstat(fd, &info) != 0) {
-        const int err = errno;
-        ::close(fd);
-        fail("fstat", name, err);
-    }
-
-    const std::size_t bytes = static_cast<std::size_t>(info.st_size);
-    if (bytes < kRingDataOffset + sizeof(Event)) {
-        ::close(fd);
-        throw std::runtime_error("ring '" + name + "' is too small to be a ring");
-    }
-
-    // Note: the segment can still be ftruncate'd smaller by anyone running as
-    // this user, after which touching a page past the new end raises SIGBUS
-    // rather than a recoverable fault. Out of scope here — the same-uid
-    // attacker who can do that can also ptrace the agent — but it is a real
-    // property of mapping a file another process controls, not an oversight.
-    void* base = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    ::close(fd);
-    if (base == MAP_FAILED) fail("mmap", name, errno);
+    std::size_t bytes = 0;
+    void* base = map_existing(name, bytes, kRingDataOffset + sizeof(Event));
 
     // The trust boundary. Everything downstream indexes off this copy of the
     // geometry, never off the header it came from.
@@ -162,6 +177,49 @@ SharedRing SharedRing::open(const std::string& name) {
     ring.bytes_ = bytes;
     ring.geometry_ = geometry;
     return ring;
+}
+
+SharedRing SharedRing::create_raw(const std::string& name, std::size_t bytes) {
+    const int fd = ::shm_open(name.c_str(), O_CREAT | O_EXCL | O_RDWR, 0600);
+    if (fd < 0) {
+        const int err = errno;
+        if (err == EEXIST) {
+            throw std::runtime_error("segment '" + name + "' already exists");
+        }
+        fail("shm_open", name, err);
+    }
+    if (::ftruncate(fd, static_cast<off_t>(bytes)) != 0) {
+        const int err = errno;
+        ::close(fd);
+        ::shm_unlink(name.c_str());
+        fail("ftruncate", name, err);
+    }
+    void* base = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    ::close(fd);
+    if (base == MAP_FAILED) {
+        const int err = errno;
+        ::shm_unlink(name.c_str());
+        fail("mmap", name, err);
+    }
+
+    SharedRing seg;
+    seg.name_ = name;
+    seg.owns_ = true;
+    seg.base_ = base;
+    seg.bytes_ = bytes;
+    return seg;  // geometry_ stays empty: this segment is not a ring
+}
+
+SharedRing SharedRing::open_raw(const std::string& name) {
+    std::size_t bytes = 0;
+    void* base = map_existing(name, bytes, 1);
+
+    SharedRing seg;
+    seg.name_ = name;
+    seg.owns_ = false;
+    seg.base_ = base;
+    seg.bytes_ = bytes;
+    return seg;
 }
 
 void SharedRing::mark_producer_attached(std::uint64_t pid) noexcept {
