@@ -120,7 +120,7 @@ Three decisions worth knowing before changing anything:
 - **No dependencies.** The server is hand-rolled on POSIX sockets and the JSON is hand-rolled. The UI is one HTML file — no framework, no build step, and the canvas engine is written out rather than pulled in.
 - **The UI is a graph because the subject is a graph.** Processes attach to devices, one training job can hold four cards at once, and from v0.2 kernels advance along stream lanes. A table flattens exactly the structure the tool exists to show.
 
-`CLAUDE.md` carries the full reasoning, the roadmap, and the conventions.
+The source carries the rest: every header explains what its file is for and which constraints it is under.
 
 ## Roadmap
 

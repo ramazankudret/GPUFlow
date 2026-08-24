@@ -6,3 +6,6 @@ compile_commands.json
 # issue to get a URL; the README embeds that. A 55 MB file committed once stays
 # in every clone forever.
 docs/*.mp4
+
+# Development notes, kept local.
+CLAUDE.md
