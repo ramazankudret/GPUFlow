@@ -41,3 +41,24 @@ endif()
 # device_monitor.cpp resolves the running-process entry points at runtime, so
 # the link has to keep dlsym available.
 target_link_libraries(gpuflow PRIVATE ${CMAKE_DL_LIBS})
+
+# The event ring the v0.2 collector will write into. Proven standalone here,
+# before any CUPTI code exists — a missed fence is far cheaper to find with a
+# synthetic writer than from inside a library injected into someone else's
+# CUDA process. Also the seed of the benchmark harness: --mode throughput
+# reports the per-record cost the collector will impose.
+add_executable(ring_stress
+    tools/ring_stress.cpp
+    src/ipc/shared_ring.cpp)
+target_include_directories(ring_stress PRIVATE src)
+target_compile_options(ring_stress PRIVATE -Wall -Wextra -Wpedantic)
+find_package(Threads REQUIRED)
+target_link_libraries(ring_stress PRIVATE Threads::Threads)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(ring_stress PRIVATE rt)   # shm_open on older glibc
+endif()
+
+option(GPUFLOW_RING_DEBUG "Trap concurrent producers on the SPSC ring" OFF)
+if(GPUFLOW_RING_DEBUG)
+    target_compile_definitions(ring_stress PRIVATE GPUFLOW_RING_DEBUG)
+endif()
