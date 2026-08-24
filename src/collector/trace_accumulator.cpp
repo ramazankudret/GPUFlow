@@ -1,5 +1,7 @@
 #include "collector/trace_accumulator.hpp"
 
+#include <cxxabi.h>
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -10,6 +12,36 @@ namespace {
 
 std::uint64_t kernel_key(std::uint32_t name_index, std::uint32_t stream_id) {
     return (static_cast<std::uint64_t>(name_index) << 32) | stream_id;
+}
+
+// A demangled C++ template can run to several hundred characters, and the name
+// pool is sent whole on every frame. Long enough to identify a kernel, short
+// enough that twenty of them do not become the payload.
+constexpr std::size_t kMaxDisplayName = 160;
+
+// Done on the agent side, never in the injected library: the collector's job is
+// to get bytes out of someone else's process, and demangling is presentation.
+std::string demangle(const std::string& raw) {
+    if (raw.size() < 3 || raw[0] != '_' || raw[1] != 'Z') return raw;
+    int status = 0;
+    char* out = abi::__cxa_demangle(raw.c_str(), nullptr, nullptr, &status);
+    if (out == nullptr) return raw;
+    std::string result = status == 0 ? std::string(out) : raw;
+    std::free(out);
+    return result;
+}
+
+std::string shorten(const std::string& name) {
+    if (name.size() <= kMaxDisplayName) return name;
+
+    // Cut the middle, not the tail. A template instantiation's identity lives
+    // at both ends, and dropping the suffix makes two different kernels read as
+    // the same one.
+    std::size_t head = kMaxDisplayName * 2 / 3;
+    const std::size_t tail = kMaxDisplayName - head - 1;
+    // Never split a UTF-8 sequence; half a code point is not valid JSON.
+    while (head > 0 && (static_cast<unsigned char>(name[head]) & 0xC0) == 0x80) --head;
+    return name.substr(0, head) + "…" + name.substr(name.size() - tail);
 }
 
 }  // namespace
@@ -31,7 +63,7 @@ std::uint32_t TraceAccumulator::name_index_for(std::uint32_t name_id) {
     if (resolved.empty()) return 0;
 
     const auto index = static_cast<std::uint32_t>(name_pool_.size());
-    name_pool_.push_back(resolved);
+    name_pool_.push_back(shorten(demangle(resolved)));
     name_index_.emplace(name_id, index);
     return index;
 }
