@@ -49,10 +49,68 @@ struct GpuSample {
     std::vector<ProcessSample> processes;
 };
 
+// Per (kernel name, stream). Always sent in full: the number of distinct
+// kernels a program has is small and does not grow with how hard it runs them,
+// which is exactly the property the raw spans lack.
+struct KernelStat {
+    std::uint32_t name_index = 0;
+    std::uint32_t stream_id = 0;
+    std::uint64_t launches = 0;
+    std::uint64_t total_ns = 0;
+    std::uint64_t max_ns = 0;
+};
+
+// One kernel execution, for the lanes. These are what cannot all be sent: a
+// program launching 100k kernels a second would be 100k of these per frame,
+// which is neither transmittable nor drawable. A bounded, most-recent sample
+// goes out and TracedProcess::spans_elided says how much did not.
+struct KernelSpan {
+    std::uint32_t stream_id = 0;
+    std::uint32_t name_index = 0;
+    std::int64_t start_offset_us = 0;  // relative to the snapshot timestamp
+    std::uint32_t duration_ns = 0;
+
+    // 0 = kernel, 1 = host-to-device, 2 = device-to-host, 3 = device-to-device.
+    // A copy stream carries no kernels, so without this the lane a program
+    // dedicates to transfers would not exist at all in the plane — which is
+    // exactly the structure v0.2 exists to show.
+    std::uint8_t kind = 0;
+};
+
+struct CopyStat {
+    std::uint64_t count = 0;
+    std::uint64_t bytes = 0;
+    std::uint64_t total_ns = 0;
+};
+
+// A process GPUFlow launched and is instrumenting. Absent for every process the
+// passive layer merely observes — the distinction is the whole shape of the
+// tool, and the UI has to be able to see it.
+struct TracedProcess {
+    std::uint32_t pid = 0;
+    std::string command;
+    bool running = false;
+
+    std::vector<std::string> names;  // indexed by KernelStat/KernelSpan
+    std::vector<std::uint32_t> streams;
+    std::vector<KernelStat> kernels;
+    std::vector<KernelSpan> spans;
+
+    CopyStat host_to_device;
+    CopyStat device_to_host;
+    CopyStat device_to_device;
+
+    std::uint64_t events_total = 0;
+    std::uint64_t events_dropped = 0;   // the ring was full
+    std::uint64_t spans_elided = 0;     // in the window but not sent
+    std::int64_t clock_offset_ns = 0;   // CUPTI's clock minus the agent's
+};
+
 struct Snapshot {
     std::int64_t timestamp_unix_ms = 0;
     std::string driver_version;
     std::vector<GpuSample> gpus;
+    std::vector<TracedProcess> traced;
 
     // Hand-rolled; see snapshot.cpp for why no JSON library is pulled in.
     std::string to_json() const;

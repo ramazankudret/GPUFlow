@@ -28,6 +28,13 @@ public:
         // startup so a running agent does not depend on the file surviving.
         std::string ui_path;
         int poll_interval_ms = 1000;
+
+        // The event ring has to be emptied far more often than a frame is sent,
+        // or a busy process overruns it between broadcasts. Both timers live in
+        // the one poll loop rather than a second thread — staying
+        // single-threaded is what lets the drain and the snapshot share a
+        // timeline with no locking between them.
+        int drain_interval_ms = 25;
     };
 
     // Produces the payload broadcast on each tick and sent to a client the
@@ -35,7 +42,13 @@ public:
     // transport ignorant of the model.
     using SnapshotSource = std::function<std::string()>;
 
+    // Runs on the drain timer whether or not anyone is watching: the ring fills
+    // regardless of browsers, and an unread ring drops events the operator
+    // would then see as a hole they never caused.
+    using DrainHook = std::function<void()>;
+
     SseServer(Options options, SnapshotSource source);
+    void set_drain_hook(DrainHook hook);
     ~SseServer();
 
     SseServer(const SseServer&) = delete;

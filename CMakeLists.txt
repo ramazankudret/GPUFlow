@@ -13,7 +13,10 @@ add_executable(gpuflow
     src/main.cpp
     src/model/snapshot.cpp
     src/nvml/device_monitor.cpp
-    src/transport/sse_server.cpp)
+    src/transport/sse_server.cpp
+    src/ipc/shared_ring.cpp
+    src/collector/run_session.cpp
+    src/collector/trace_accumulator.cpp)
 
 target_include_directories(gpuflow PRIVATE src)
 target_compile_options(gpuflow PRIVATE -Wall -Wextra -Wpedantic)
@@ -39,8 +42,12 @@ else()
 endif()
 
 # device_monitor.cpp resolves the running-process entry points at runtime, so
-# the link has to keep dlsym available.
+# the link has to keep dlsym available. run_session needs shm_open, which older
+# glibc keeps in librt.
 target_link_libraries(gpuflow PRIVATE ${CMAKE_DL_LIBS})
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(gpuflow PRIVATE rt)
+endif()
 
 # The event ring the v0.2 collector will write into. Proven standalone here,
 # before any CUPTI code exists — a missed fence is far cheaper to find with a

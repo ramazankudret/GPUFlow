@@ -25,6 +25,14 @@ enum class EventKind : std::uint8_t {
     kMemcpy = 2,
     kStreamCreated = 3,
     kStreamDestroyed = 4,
+
+    // Carries CUPTI's clock in start_ns and the collector's CLOCK_REALTIME in
+    // end_ns, read back to back. On Linux the two agree to well under a
+    // microsecond — CUPTI's timestamp *is* CLOCK_REALTIME — but the agent
+    // computes the offset from this rather than assuming it, so a platform
+    // where they differ corrects itself instead of drawing kernels at the
+    // wrong point on the timeline.
+    kClockSync = 5,
     kSynthetic = 0xff,  // stress harness only; the agent ignores these
 };
 

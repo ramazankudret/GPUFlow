@@ -17,9 +17,9 @@ GPUFlow aims at all four columns at once. You see every process on the card, and
 
 ## Status
 
-**v0.1 — the passive layer.** NVML polling, an HTTP + SSE server with no dependencies beyond POSIX sockets, and a single-file browser UI drawing a scrolling utilization trace per device with a process table beneath it.
+**v0.1 — the passive layer.** NVML polling, an HTTP + SSE server with no dependencies beyond POSIX sockets, and a single-file node-graph browser UI.
 
-The kernel layer (v0.2) is not started. There are no kernels, streams, or copies in the data model yet — until that lands, this is a nicer `nvtop`.
+**v0.2 — the kernel layer, working except for the drawing.** `gpuflow run <command>` launches a CUDA program with a CUPTI-based collector injected into it, with no changes to that program's source. Its kernels and copies reach the browser live: per-stream lanes, per-kernel aggregates, and host-to-device transfers. What is not done is the rendering — the data is on the wire, the UI does not yet draw it.
 
 ## Build and run
 
@@ -33,13 +33,23 @@ cmake --build build -j
 
 Then open <http://127.0.0.1:7717>.
 
+To see inside a program rather than just around it:
+
+```bash
+./build/gpuflow run -- ./your-cuda-program --its-own --flags
+```
+
+That needs CUPTI, which ships with the CUDA toolkit rather than the driver. Without it the build still succeeds and `watch` still works; only `run` is unavailable.
+
 ```
 usage: gpuflow watch [options]
+       gpuflow run [options] -- <command> [args...]
 
   --bind ADDRESS     interface to listen on (default 127.0.0.1)
   --port PORT        port to listen on (default 7717)
   --interval MS      sampling interval in milliseconds (default 1000)
   --ui PATH          override the UI document path
+  --ring-capacity N  event ring size in records, power of two (default 262144)
 ```
 
 The UI is a pan/zoom plane: devices, the processes attached to them, and the host as connected nodes. Drag to pan, wheel to zoom, click a node to isolate it and its edges, `F` to fit, `Esc` to clear.
@@ -58,9 +68,13 @@ Stated plainly, because precision about weaknesses is the difference between a t
 
 **WSL2 specifics.** Device utilization, device memory, and the process list work. Per-process memory and per-process utilization do not, per the two points above. Process *names* do work — GPUFlow reads `/proc/<pid>/comm`, where `nvidia-smi` reports `[Not Found]` under WSL2.
 
-**Not a Windows-native build.** The server is hand-rolled on POSIX sockets and the v0.2 ring buffer will use `shm_open`. Run it under WSL2 or on Linux; a native port would need Winsock2 and `CreateFileMapping` and is not on the roadmap.
+**Not a Windows-native build.** The server is hand-rolled on POSIX sockets and the event ring uses `shm_open`. Run it under WSL2 or on Linux; a native port would need Winsock2 and `CreateFileMapping` and is not on the roadmap.
 
-**Coming in v0.2, and worth knowing now:** `CUDA_INJECTION64_PATH` is read at CUDA initialization, so GPUFlow will be able to instrument processes it launches, not processes already running. The passive layer covers everything else.
+**`run` can only instrument what it launches.** `CUDA_INJECTION64_PATH` is read at CUDA initialization, so a process that is already running cannot be attached to. The passive layer covers everything else. This is a property of the mechanism, not a limitation waiting to be fixed.
+
+**The lanes are a sample, and say so.** A busy program produces around a hundred thousand kernel records a second — far more than can be sent to a browser or drawn by one. Per-kernel aggregates are always complete; the individual spans behind the lanes are capped per stream and most-recent-first, and `spans_elided` reports exactly how many were left out. A kernel's span reaches the browser about 120 ms after it ends, bounded by `GPUFLOW_FLUSH_MS`.
+
+**`run` costs the observed program about 2.6 %.** Measured, launch-bound, on this machine — see `docs/overhead.md`, including why that percentage flatters itself under WSL2.
 
 ## Security
 

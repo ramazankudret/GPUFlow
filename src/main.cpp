@@ -1,19 +1,23 @@
 // Entry point: argument parsing, the poll timer, and signal handling.
 //
 // The wiring here is the whole reason the layers stay separable — main is the
-// only place that knows both DeviceMonitor and SseServer exist, and it joins
-// them with a std::function returning JSON, not with a shared type.
+// only place that knows DeviceMonitor, RunSession, and SseServer all exist, and
+// it joins them through Snapshot rather than through a shared type.
 
 #include <signal.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "collector/run_session.hpp"
+#include "model/snapshot.hpp"
 #include "nvml/device_monitor.hpp"
 #include "transport/sse_server.hpp"
 
@@ -32,11 +36,19 @@ void print_usage() {
                  "GPUFlow — live view of what every process is doing on the GPUs\n"
                  "\n"
                  "usage: gpuflow watch [options]\n"
+                 "       gpuflow run [options] -- <command> [args...]\n"
+                 "\n"
+                 "  watch   the passive layer: every process on every device\n"
+                 "  run     the same, plus the kernels and copies inside the command it\n"
+                 "          launches. CUDA reads CUDA_INJECTION64_PATH at initialisation,\n"
+                 "          so only a process GPUFlow starts can be instrumented.\n"
                  "\n"
                  "  --bind ADDRESS     interface to listen on (default 127.0.0.1)\n"
                  "  --port PORT        port to listen on (default 7717)\n"
                  "  --interval MS      sampling interval in milliseconds (default 1000)\n"
                  "  --ui PATH          override the UI document path\n"
+                 "  --ring-capacity N  event ring size in records, power of two\n"
+                 "                     (default 262144, about 16 MB)\n"
                  "\n"
                  "Binding beyond loopback exposes the PIDs and process names of every\n"
                  "user on this machine. See the README before using --bind 0.0.0.0.\n");
@@ -78,6 +90,10 @@ bool parse_int(const char* text, long& out) {
     return true;
 }
 
+bool is_power_of_two(long v) {
+    return v > 0 && (v & (v - 1)) == 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -86,18 +102,30 @@ int main(int argc, char** argv) {
         print_usage();
         return args.empty() ? 1 : 0;
     }
-    if (args[0] != "watch") {
-        std::fprintf(stderr, "gpuflow: unknown subcommand '%s'\n\n", args[0].c_str());
+
+    const std::string subcommand = args[0];
+    if (subcommand != "watch" && subcommand != "run") {
+        std::fprintf(stderr, "gpuflow: unknown subcommand '%s'\n\n", subcommand.c_str());
         print_usage();
         return 1;
     }
 
     gpuflow::SseServer::Options options;
     options.ui_path = default_ui_path();
+    std::uint32_t ring_capacity = 1u << 18;
+    std::vector<std::string> command;
 
     for (std::size_t i = 1; i < args.size(); ++i) {
         const std::string& flag = args[i];
         const bool has_value = i + 1 < args.size();
+
+        // Everything past the separator belongs to the launched program, flags
+        // included. Without it, a --verbose meant for the child would be
+        // rejected here as an unknown gpuflow option.
+        if (flag == "--") {
+            command.assign(args.begin() + static_cast<long>(i) + 1, args.end());
+            break;
+        }
 
         if (flag == "--bind" && has_value) {
             options.bind_address = args[++i];
@@ -117,6 +145,18 @@ int main(int argc, char** argv) {
             options.poll_interval_ms = static_cast<int>(value);
         } else if (flag == "--ui" && has_value) {
             options.ui_path = args[++i];
+        } else if (flag == "--ring-capacity" && has_value) {
+            long value = 0;
+            if (!parse_int(args[++i].c_str(), value) || !is_power_of_two(value)) {
+                std::fprintf(stderr, "gpuflow: --ring-capacity expects a power of two\n");
+                return 1;
+            }
+            ring_capacity = static_cast<std::uint32_t>(value);
+        } else if (subcommand == "run" && flag.rfind('-', 0) != 0) {
+            // A bare word under run starts the command, so the common case
+            // `gpuflow run ./train` works without needing the separator.
+            command.assign(args.begin() + static_cast<long>(i), args.end());
+            break;
         } else {
             std::fprintf(stderr, "gpuflow: unexpected argument '%s'\n\n", flag.c_str());
             print_usage();
@@ -124,10 +164,32 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (subcommand == "run" && command.empty()) {
+        std::fprintf(stderr, "gpuflow: run needs a command\n\n");
+        print_usage();
+        return 1;
+    }
+
     try {
         gpuflow::DeviceMonitor monitor;
 
-        gpuflow::SseServer server(options, [&monitor]() { return monitor.poll().to_json(); });
+        std::unique_ptr<gpuflow::RunSession> session;
+        if (subcommand == "run") {
+            session = std::make_unique<gpuflow::RunSession>(
+                command, gpuflow::default_collector_path(), ring_capacity);
+        }
+
+        gpuflow::SseServer server(options, [&monitor, &session]() {
+            gpuflow::Snapshot snapshot = monitor.poll();
+            if (session) {
+                snapshot.traced.push_back(session->build(snapshot.timestamp_unix_ms));
+            }
+            return snapshot.to_json();
+        });
+
+        if (session) {
+            server.set_drain_hook([&session]() { session->drain(); });
+        }
         server.start();
 
         g_server = &server;
@@ -139,6 +201,11 @@ int main(int argc, char** argv) {
 
         std::fprintf(stderr, "GPUFlow listening on http://%s:%u\n",
                      options.bind_address.c_str(), static_cast<unsigned>(server.port()));
+        if (session) {
+            std::fprintf(stderr,
+                         "instrumenting pid %d — the plane keeps serving after it exits\n",
+                         static_cast<int>(session->pid()));
+        }
         if (options.bind_address != "127.0.0.1" && options.bind_address != "localhost") {
             std::fprintf(stderr,
                          "gpuflow: bound beyond loopback — this stream carries the PIDs "
@@ -147,6 +214,13 @@ int main(int argc, char** argv) {
 
         server.run();
         g_server = nullptr;
+
+        if (session && !session->child_running()) {
+            const int status = session->exit_status();
+            std::fprintf(stderr, "child exited %s %d\n",
+                         WIFSIGNALED(status) ? "by signal" : "with code",
+                         WIFSIGNALED(status) ? WTERMSIG(status) : WEXITSTATUS(status));
+        }
         std::fprintf(stderr, "GPUFlow stopped.\n");
         return 0;
     } catch (const std::exception& error) {

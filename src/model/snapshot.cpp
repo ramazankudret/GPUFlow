@@ -148,6 +148,127 @@ std::string Snapshot::to_json() const {
         out += '}';
     }
     out += ']';
+
+    out += ',';
+    append_field(out, "traced");
+    out += '[';
+    for (std::size_t i = 0; i < traced.size(); ++i) {
+        const TracedProcess& t = traced[i];
+        if (i > 0) out += ',';
+
+        out += '{';
+        append_field(out, "pid");
+        append_number(out, t.pid);
+        out += ',';
+        append_field(out, "command");
+        append_escaped(out, t.command);
+        out += ',';
+        append_field(out, "running");
+        out += t.running ? "true" : "false";
+        out += ',';
+        append_field(out, "events_total");
+        append_number(out, t.events_total);
+        out += ',';
+        append_field(out, "events_dropped");
+        append_number(out, t.events_dropped);
+        out += ',';
+        append_field(out, "spans_elided");
+        append_number(out, t.spans_elided);
+        out += ',';
+        append_field(out, "clock_offset_ns");
+        append_number(out, t.clock_offset_ns);
+
+        out += ',';
+        append_field(out, "names");
+        out += '[';
+        for (std::size_t j = 0; j < t.names.size(); ++j) {
+            if (j > 0) out += ',';
+            append_escaped(out, t.names[j]);
+        }
+        out += ']';
+
+        out += ',';
+        append_field(out, "streams");
+        out += '[';
+        for (std::size_t j = 0; j < t.streams.size(); ++j) {
+            if (j > 0) out += ',';
+            append_number(out, t.streams[j]);
+        }
+        out += ']';
+
+        out += ',';
+        append_field(out, "kernels");
+        out += '[';
+        for (std::size_t j = 0; j < t.kernels.size(); ++j) {
+            const KernelStat& k = t.kernels[j];
+            if (j > 0) out += ',';
+            out += '{';
+            append_field(out, "name");
+            append_number(out, k.name_index);
+            out += ',';
+            append_field(out, "stream");
+            append_number(out, k.stream_id);
+            out += ',';
+            append_field(out, "launches");
+            append_number(out, k.launches);
+            out += ',';
+            append_field(out, "total_ns");
+            append_number(out, k.total_ns);
+            out += ',';
+            append_field(out, "max_ns");
+            append_number(out, k.max_ns);
+            out += '}';
+        }
+        out += ']';
+
+        // Positional rather than keyed: at a thousand-plus spans a frame, field
+        // names would be most of the payload. [stream, name, startUs, durNs, kind].
+        out += ',';
+        append_field(out, "spans");
+        out += '[';
+        for (std::size_t j = 0; j < t.spans.size(); ++j) {
+            const KernelSpan& s = t.spans[j];
+            if (j > 0) out += ',';
+            out += '[';
+            append_number(out, s.stream_id);
+            out += ',';
+            append_number(out, s.name_index);
+            out += ',';
+            append_number(out, s.start_offset_us);
+            out += ',';
+            append_number(out, s.duration_ns);
+            out += ',';
+            append_number(out, s.kind);
+            out += ']';
+        }
+        out += ']';
+
+        out += ',';
+        append_field(out, "copies");
+        out += '{';
+        const std::pair<const char*, const CopyStat*> copies[] = {
+            {"h2d", &t.host_to_device},
+            {"d2h", &t.device_to_host},
+            {"d2d", &t.device_to_device},
+        };
+        for (std::size_t j = 0; j < 3; ++j) {
+            if (j > 0) out += ',';
+            append_field(out, copies[j].first);
+            out += '{';
+            append_field(out, "count");
+            append_number(out, copies[j].second->count);
+            out += ',';
+            append_field(out, "bytes");
+            append_number(out, copies[j].second->bytes);
+            out += ',';
+            append_field(out, "total_ns");
+            append_number(out, copies[j].second->total_ns);
+            out += '}';
+        }
+        out += '}';
+        out += '}';
+    }
+    out += ']';
     out += '}';
 
     return out;

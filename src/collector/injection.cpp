@@ -28,6 +28,8 @@
 #include <cupti.h>
 
 #include <atomic>
+#include <ctime>
+
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -146,6 +148,23 @@ void push(Collector& c, Event& e) {
     if (!c.producer.try_push(e)) ++c.dropped_records;
 }
 
+// Read back to back so the pair is as tight as the two calls allow. Sent at
+// attach and again on every flush, so a long-running process re-anchors rather
+// than accumulating drift.
+void emit_clock_sync(Collector& c) {
+    std::uint64_t cupti_now = 0;
+    if (cuptiGetTimestamp(&cupti_now) != CUPTI_SUCCESS) return;
+    struct timespec ts {};
+    if (::clock_gettime(CLOCK_REALTIME, &ts) != 0) return;
+
+    Event e{};
+    e.kind = static_cast<std::uint8_t>(EventKind::kClockSync);
+    e.start_ns = cupti_now;
+    e.end_ns = static_cast<std::uint64_t>(ts.tv_sec) * 1000000000ULL +
+               static_cast<std::uint64_t>(ts.tv_nsec);
+    push(c, e);
+}
+
 void handle_kernel(Collector& c, const CUpti_ActivityKernel4* k) {
     Event e{};
     e.kind = static_cast<std::uint8_t>(EventKind::kKernel);
@@ -183,6 +202,8 @@ void CUPTIAPI buffer_completed(CUcontext, std::uint32_t, std::uint8_t* buffer, s
         release_buffer(buffer);
         return;
     }
+
+    emit_clock_sync(c);
 
     CUpti_Activity* record = nullptr;
     while (cuptiActivityGetNextRecord(buffer, valid_bytes, &record) == CUPTI_SUCCESS) {
@@ -296,6 +317,7 @@ bool start() {
 
     c.ring.mark_producer_attached(static_cast<std::uint64_t>(::getpid()));
     c.active = true;
+    emit_clock_sync(c);
 
     std::uint32_t version = 0;
     cuptiGetVersion(&version);

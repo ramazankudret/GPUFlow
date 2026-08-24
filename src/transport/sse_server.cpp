@@ -102,6 +102,7 @@ std::int64_t steady_now_ms() {
 struct SseServer::Impl {
     Options options;
     SnapshotSource source;
+    DrainHook drain;
 
     int listen_fd = -1;
     std::uint16_t bound_port = 0;
@@ -310,6 +311,10 @@ SseServer::SseServer(Options options, SnapshotSource source)
 
 SseServer::~SseServer() = default;
 
+void SseServer::set_drain_hook(DrainHook hook) {
+    impl_->drain = std::move(hook);
+}
+
 std::uint16_t SseServer::port() const {
     return impl_->bound_port;
 }
@@ -342,6 +347,7 @@ void SseServer::run() {
     impl_->running = true;
 
     std::int64_t next_tick_ms = steady_now_ms();
+    std::int64_t next_drain_ms = steady_now_ms();
     std::vector<pollfd> fds;
 
     while (impl_->running) {
@@ -355,7 +361,9 @@ void SseServer::run() {
         }
 
         const std::int64_t now = steady_now_ms();
-        const int timeout = static_cast<int>(next_tick_ms > now ? next_tick_ms - now : 0);
+        std::int64_t wake_at = next_tick_ms;
+        if (impl_->drain && next_drain_ms < wake_at) wake_at = next_drain_ms;
+        const int timeout = static_cast<int>(wake_at > now ? wake_at - now : 0);
 
         const int ready = ::poll(fds.data(), fds.size(), timeout);
         if (ready < 0) {
@@ -391,6 +399,15 @@ void SseServer::run() {
                 client.close_after_flush = true;
                 client.outbox.clear();
             }
+        }
+
+        // Unconditionally, unlike the broadcast below: the observed process
+        // keeps filling the ring whether or not a browser is attached, and an
+        // undrained ring drops events that would then read as a hole the
+        // operator caused by closing a tab.
+        if (impl_->drain && steady_now_ms() >= next_drain_ms) {
+            impl_->drain();
+            next_drain_ms = steady_now_ms() + impl_->options.drain_interval_ms;
         }
 
         if (steady_now_ms() >= next_tick_ms) {
