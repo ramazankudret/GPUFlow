@@ -9,17 +9,17 @@ Two kinds of tool already exist, and neither covers the middle:
 | `nvidia-smi` / `nvtop`  |  ●   |       ●       |         ○         |          ●          |
 | Nsight Systems/Compute  |  ○   |       ○       |         ●         |          ●          |
 | Instrumentation libs    |  ●   |       ○       |         ●         |          ○          |
-| **GPUFlow**             |  ●   |       ●       |    ● *(v0.2)*     |          ●          |
+| **GPUFlow**             |  ●   |       ●       |         ●         |          ●          |
 
 `nvidia-smi` and `nvtop` are live but flat — utilization and memory per process, and nothing about a kernel, a stream, or a copy. Nsight goes deep but offline: run, stop, open a trace file. Instrumentation libraries go deep and live but ask you to edit your source and rebuild.
 
-GPUFlow aims at all four columns at once. You see every process on the card, and — from v0.2 — the kernels and streams inside the processes you launch through it.
+GPUFlow aims at all four columns at once. You see every process on the card, and the kernels and streams inside the processes you launch through it.
 
 ## Status
 
 **v0.1 — the passive layer.** NVML polling, an HTTP + SSE server with no dependencies beyond POSIX sockets, and a single-file node-graph browser UI.
 
-**v0.2 — the kernel layer, working except for the drawing.** `gpuflow run <command>` launches a CUDA program with a CUPTI-based collector injected into it, with no changes to that program's source. Its kernels and copies reach the browser live: per-stream lanes, per-kernel aggregates, and host-to-device transfers. What is not done is the rendering — the data is on the wire, the UI does not yet draw it.
+**v0.2 — the kernel layer.** `gpuflow run <command>` launches a CUDA program with a CUPTI-based collector injected into it, with no changes to that program's source. Its kernels and copies flow along per-stream lanes in the browser as they run, next to per-kernel launch counts and transfer totals. Streams are still labelled by id rather than by name; that is what is left.
 
 ## Build and run
 
@@ -53,6 +53,8 @@ usage: gpuflow watch [options]
 ```
 
 The UI is a pan/zoom plane: devices, the processes attached to them, and the host as connected nodes. Drag to pan, wheel to zoom, click a node to isolate it and its edges, `F` to fit, `Esc` to clear.
+
+A process launched with `run` is marked `TRACED` and carries a lane strip — one row per CUDA stream, kernels in the SM colour, copies in the transfer colour. The strip states its own time window and how far behind live it is, and says how many of the executions it is actually showing.
 
 Appending `?demo` (or `?demo=shared`, `?demo=multigpu`, …) replays canned frames instead of the live stream — it exists so an eight-GPU box can be captured for a screenshot from a one-GPU laptop. Demo mode says so on screen and is never the default.
 
