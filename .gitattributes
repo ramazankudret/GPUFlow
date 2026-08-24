@@ -1,0 +1,5 @@
+# Builds run on Linux — WSL2 included — while the working tree often sits on a
+# Windows filesystem, where core.autocrlf would hand the compiler CRLF sources.
+# Harmless for C++ today, but it silently breaks the first shell script or
+# build input this repo grows. Normalise to LF on both sides instead.
+* text=auto eol=lf
