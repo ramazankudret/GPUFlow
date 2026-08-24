@@ -1,6 +1,12 @@
-# GPUFlow
+<p align="center">
+  <img src="docs/media/gpuflow-logo.svg" width="360" alt="GPUFlow">
+</p>
 
-A live, browser-based view of what every process is doing on the machine's GPUs.
+<h1 align="center">GPUFlow</h1>
+
+<p align="center">
+  A live, browser-based view of what every process is doing on the machine's GPUs.
+</p>
 
 Two kinds of tool already exist, and neither covers the middle:
 
@@ -44,7 +50,7 @@ That needs CUPTI, which ships with the CUDA toolkit rather than the driver. With
 If you do not have a CUDA program to point it at, `examples/demo_workload.cu` is one — a transformer-shaped launch pattern across three streams, written to make the lanes legible rather than to compute anything:
 
 ```bash
-nvcc -o demo_workload examples/demo_workload.cu
+nvcc -o demo_workload examples/demo_workload.cu -lnvToolsExt
 ./build/gpuflow run -- ./demo_workload 600
 ```
 
@@ -66,6 +72,14 @@ A process launched with `run` is marked `TRACED` and carries a lane strip — on
 Lanes are labelled by name if your program named its streams with `nvtxNameCudaStreamA`, as `default` for the null stream, and by id otherwise. GPUFlow will not guess a stream's purpose from the work that happened to land on it.
 
 Appending `?demo` (or `?demo=shared`, `?demo=multigpu`, …) replays canned frames instead of the live stream — it exists so an eight-GPU box can be captured for a screenshot from a one-GPU laptop. Demo mode says so on screen and is never the default.
+
+### On a shared box
+
+![Eight A100s, seven processes, two of them holding several cards at once](docs/media/shared-box.png)
+
+One `train_ddp` process holds four cards; `sd_infer` holds two. That is one node with several edges, and it is the shape `nvidia-smi` cannot print — it repeats the same PID on four separate rows and drops the relationship between them.
+
+Captured with `?demo=shared`: synthetic frames, labelled as such on screen, because the machine this was built on has one GPU.
 
 ## Limitations
 
@@ -106,9 +120,10 @@ Three decisions worth knowing before changing anything:
 
 ## Roadmap
 
-- **v0.2** — the kernel layer: CUPTI-based injected collector, an SPSC lock-free ring in shared memory, stream lanes with kernel blocks flowing along them. Overhead numbers published in `docs/` alongside it.
 - **v0.3** — SM occupancy grid, host↔device transfer edges weighted by bandwidth, timeline scrubbing over a retained window.
 - **v0.4** — `gpuflow hub`: the same binary in aggregation mode across many hosts.
+
+Overhead numbers are measured and republished every release, in [`docs/overhead.md`](docs/overhead.md). A profiler that can state its own cost is worth more than one that cannot.
 
 ## License
 

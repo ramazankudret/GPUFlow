@@ -1,3 +1,8 @@
 build/
 compile_commands.json
 .cache/
+
+# Screen recordings live on GitHub's CDN, not in git history. Drag them into an
+# issue to get a URL; the README embeds that. A 55 MB file committed once stays
+# in every clone forever.
+docs/*.mp4

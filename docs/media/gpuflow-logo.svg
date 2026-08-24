@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="280" viewBox="0 0 220 140" fill="none" role="img" aria-label="GPUFlow">
+  <defs>
+    <g id="blade">
+      <path d="M0 -7.5C10.5 -20 24 -18 25.5 -6C19 -1.5 8.5 -2.5 0 6.5Z" fill="#262b31"></path>
+    </g>
+    <g id="fan">
+      <circle r="30" fill="#dcd7ce"></circle>
+      <circle r="27.5" fill="none" stroke="#262b31" stroke-width="2" opacity=".25"></circle>
+      <g>
+        <animateTransform attributeName="transform" attributeType="XML" type="rotate"
+                          from="0" to="360" dur="3s" repeatCount="indefinite"/>
+        <use href="#blade"></use>
+        <use href="#blade" transform="rotate(51.43)"></use>
+        <use href="#blade" transform="rotate(102.86)"></use>
+        <use href="#blade" transform="rotate(154.29)"></use>
+        <use href="#blade" transform="rotate(205.71)"></use>
+        <use href="#blade" transform="rotate(257.14)"></use>
+        <use href="#blade" transform="rotate(308.57)"></use>
+      </g>
+      <circle r="7" fill="#262b31"></circle>
+    </g>
+  </defs>
+
+  <rect x="8" y="10" width="13" height="120" rx="2" fill="#3a4048"></rect>
+  <rect x="11" y="22" width="7" height="22" rx="1.5" fill="#dcd7ce" opacity=".55"></rect>
+  <rect x="11" y="50" width="7" height="22" rx="1.5" fill="#dcd7ce" opacity=".55"></rect>
+  <rect x="11" y="78" width="7" height="22" rx="1.5" fill="#dcd7ce" opacity=".55"></rect>
+
+  <path d="M20 28h186v84H20z" fill="#34706f"></path>
+  <path d="M20 100h186v12H20z" fill="#2b5f5e"></path>
+  <path d="M28 34h26v6H28zM28 44h20v6H28zM28 54h32v6H28z" fill="#479492"></path>
+  <path d="M40 112h10v10H40zM56 112h10v10H56zM72 112h10v10H72zM88 112h10v10H88zM104 112h10v10h-10zM120 112h10v10h-10z" fill="#c9a24d"></path>
+
+  <path d="M60 14h96l12 10h34v72l-14 16H72L56 96V26z" fill="#3a4149"></path>
+  <path d="M60 14h96l12 10h34v6H56v-4z" fill="#454d57"></path>
+  <path d="M64 24h12v8H64zM190 24h12v8h-12zM64 96h12v8H64zM190 96h12v8h-12z" fill="#dcd7ce" opacity=".8"></path>
+  <rect x="178" y="16" width="22" height="7" rx="2" fill="#dd4437"></rect>
+
+  <g transform="translate(106,64)"><use href="#fan"></use></g>
+  <g transform="translate(172,64)"><use href="#fan"></use></g>
+
+  <path d="M76 88h58l8-10h32" stroke="#dd4437" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".9"></path>
+</svg>
