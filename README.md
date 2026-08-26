@@ -10,7 +10,7 @@
 
 https://github.com/user-attachments/assets/299ec047-b258-4def-9ea7-90c9c97411d5
 
-*Kernels and copies from an ordinary CUDA program, flowing along its own stream lanes as they run. That program was not modified, recompiled, or linked against anything — it was started with `gpuflow run`.*
+*The plane: devices, the processes attached to them, and — inside a process GPUFlow launched — the kernels and copies moving along that process's own CUDA streams.*
 
 Two kinds of tool already exist, and neither covers the middle:
 
