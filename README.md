@@ -8,7 +8,7 @@
   A live, browser-based view of what every process is doing on the machine's GPUs.
 </p>
 
-https://github.com/user-attachments/assets/299ec047-b258-4def-9ea7-90c9c97411d5
+https://github.com/user-attachments/assets/0a03071e-1584-4b6c-89f9-a6d09de3dd79
 
 *The plane: devices, the processes attached to them, and — inside a process GPUFlow launched — the kernels and copies moving along that process's own CUDA streams.*
 
